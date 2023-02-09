@@ -1,225 +1,74 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="X-UA-Compatible" content="ie=edge">
   <title>Nostr backed corrabolative drawing</title>
 </head>
+
 <body>
-  <h1>Nostr backed corravolative drawing</h1>
-  <canvas
-    id="draw-area"
-    width="400px"
-    height="400px"
-    style="border: 1px solid #000000;"></canvas>
+  <h1>Nostr backed corrabolative drawing</h1>
+  <h2>left mouse click draws a pink point!</h2>
+  <canvas id="draw-area" width="400px" height="400px" style="border: 1px solid #000000;"></canvas>
   <div>
     <button id="clear-button">clear</button>
   </div>
-<!--
-    <div class="container">
-      <h2>Messages</h2>
-      <div class="chat-box">
-      </div>
-    </div>
-    <div class="container">
-      <form class="send-box">
-        <input name="message" value="" placeholder="type here ...">
-        <button id="send-button" type="submit">Send</button>
-      </form> 
-    </div>
-  </div>
--->  
+
   <script src='https://bundle.run/noble-secp256k1@1.2.14'></script>
   <script src='https://unpkg.com/@cmdcode/nostr-emitter'></script>
-  <!-- <script src="../../index.js"></script> -->
   <script type="module">
-// ページの読み込みが完了したらコールバック関数が呼ばれる
-// ※コールバック: 第2引数の無名関数(=関数名が省略された関数)
-window.addEventListener('load', async () => {
-  const canvas = document.querySelector('#draw-area');
-  // contextを使ってcanvasに絵を書いていく
-  const context = canvas.getContext('2d');
 
-  context.lineCap = 'round'; // 丸みを帯びた線にする
-    context.lineJoin = 'round'; // 丸みを帯びた線にする
-    context.lineWidth = 5; // 線の太さ
-    context.strokeStyle = 'black'; // 線の色
+    window.addEventListener('load', async () => {
+      const canvas = document.querySelector('#draw-area');
+      const context = canvas.getContext('2d');
+      context.lineCap = 'round';
+      context.lineJoin = 'round'
+      context.lineWidth = 15;
+      context.strokeStyle = 'pink';
 
-  // 直前のマウスのcanvas上のx座標とy座標を記録する
-  const lastPosition = { x: null, y: null };
+      const DEFAULT_RELAY_URL = 'wss://nostr.developer.li'
+      var topic = 'general'
 
-  // マウスがドラッグされているか(クリックされたままか)判断するためのフラグ
-  let isDrag = false;
+      const emitter = new NostrEmitter()
+      await emitter.connect(DEFAULT_RELAY_URL, topic)
 
+      emitter.opt.selfsub = true
 
-  const DEFAULT_RELAY_URL = 'wss://nostr.developer.li'
+      emitter.on('update', (event, meta) => {
+        console.log(event, meta)
+        var splited = event.data.split(",")
+        if (splited[0] == "stroke") {
+          context.beginPath();
+          context.moveTo(Number(splited[1]), Number(splited[2]))
+          context.lineTo(Number(splited[1]), Number(splited[2]));
+          context.stroke();
+          context.closePath();
+        } else if (splited[0] == "clear") {
+          context.clearRect(0, 0, canvas.width, canvas.height);
+        }
+      })
 
-// const configForm = document.querySelector('#config'),
-//       msgBox     = document.querySelector('.chat-box'),
-//       sendBox    = document.querySelector('.send-box'),
-//       relayAddr  = document.querySelector('input[name="relayUrl"]')
+      function draw(x, y) {
+        emitter.publish('update', { data: "stroke" + "," + x + "," + y })
+      }
 
-  const msgBox     = document.querySelector('.chat-box'),
-        sendBox    = document.querySelector('.send-box')
+      function clear() {
+        emitter.publish('update', { data: "clear,," })
+      }
 
-//if (!relayAddr.getAttribute('value')) relayAddr.setAttribute('value', DEFAULT_RELAY_URL)
+      function initEventHandler() {
+        const clearButton = document.querySelector('#clear-button');
+        clearButton.addEventListener('click', clear);
 
-  //if (!topic) topic = 'general'
-  var topic = 'general'
+        canvas.addEventListener('mousedown', (event) => { draw(event.offsetX, event.offsetY) });
+      }
 
-  const emitter = new NostrEmitter()
-
-  //await emitter.connect(relayUrl, topic + secret)
-  await emitter.connect(DEFAULT_RELAY_URL, topic)
-
-  emitter.opt.selfsub = true
-
-  // emitter.on('chatmsg', (event, meta) => {
-  //   const name = (meta.pubkey === emitter.pubkey)
-  //     ? 'me'
-  //     : meta.pubkey.slice(-6)
-  //   post(name, event.data)
-  //   console.log(event, meta)
-  // })
-
-  // sendBox.addEventListener('submit', (e) => {
-  //   e.preventDefault()
-  //   const { message } = Object.fromEntries(new FormData(e.target))
-  //   emitter.publish('chatmsg', { data: message })
-  //   clearInput()
-  // })
-
-
-// function post(name, msg) {
-//   const message = document.createElement('pre')
-//   message.innerText = `<${name}> ${msg}`
-//   msgBox.appendChild(message)
-// }
-
-// function clearInput() {
-//   const sendInput = document.querySelector('.send-box input')
-//   sendInput.value = ''
-// }
-
-  emitter.on('update', (event, meta) => {
-    console.log(event, meta)
-    var splited = event.data.split(",")
-    if(splited[0] == "clear"){
-      context.clearRect(0, 0, canvas.width, canvas.height);
-    }else if(splited[0] == "moveto"){
-      context.moveTo(Number(splited[1]), Number(splited[2]))
-    }else if(splited[0] == "stroke"){
-      context.lineTo(Number(splited[1]), Number(splited[2]));
-      context.stroke();
-    }else if(splited[0] == "start"){
-      context.beginPath();
-      isDrag = true;
-    }else if(splited[0] == "close"){
-      context.closePath();
-      isDrag = false;
-
-      // 描画中に記録していた値をリセットする
-      lastPosition.x = null;
-      lastPosition.y = null;
-    }
-  })
-
-  // 絵を書く
-  function draw(x, y) {
-    // マウスがドラッグされていなかったら処理を中断する。
-    // ドラッグしながらしか絵を書くことが出来ない。
-    if(!isDrag) {
-      return;
-    }
-
-    // // 線の状態を定義する
-    // // MDN CanvasRenderingContext2D: https://developer.mozilla.org/en-US/docs/Web/API/CanvasRenderingContext2D/lineJoin
-    // context.lineCap = 'round'; // 丸みを帯びた線にする
-    // context.lineJoin = 'round'; // 丸みを帯びた線にする
-    // context.lineWidth = 5; // 線の太さ
-    // context.strokeStyle = 'black'; // 線の色
-
-
-    // 書き始めは lastPosition.x, lastPosition.y の値はnullとなっているため、
-    // クリックしたところを開始点としている。
-    // この関数(draw関数内)の最後の2行で lastPosition.xとlastPosition.yに
-    // 現在のx, y座標を記録することで、次にマウスを動かした時に、
-    // 前回の位置から現在のマウスの位置まで線を引くようになる。
-    if (lastPosition.x === null || lastPosition.y === null) {
-      // ドラッグ開始時の線の開始位置
-      context.moveTo(x, y);
-      emitter.publish('update', { data: "moveto" + "," + x + "," + y })
-    } else {
-      // ドラッグ中の線の開始位置
-      context.moveTo(lastPosition.x, lastPosition.y);
-      emitter.publish('update', { data: "moveto" + "," + lastPosition.x + "," + lastPosition.y })
-    }
-    // context.moveToで設定した位置から、context.lineToで設定した位置までの線を引く。
-    // - 開始時はmoveToとlineToの値が同じであるためただの点となる。
-    // - ドラッグ中はlastPosition変数で前回のマウス位置を記録しているため、
-    //   前回の位置から現在の位置までの線(点のつながり)となる
-    context.lineTo(x, y);
-
-    // context.moveTo, context.lineToの値を元に実際に線を引く
-    context.stroke();
-    emitter.publish('update', { data: "stroke" + "," + x + "," + y })
-
-    // 現在のマウス位置を記録して、次回線を書くときの開始点に使う
-    lastPosition.x = x;
-    lastPosition.y = y;
-  }
-
-  // canvas上に書いた絵を全部消す
-  function clear() {
-    emitter.publish('update', { data: "clear,," })
-    context.clearRect(0, 0, canvas.width, canvas.height);
-  }
-
-  // マウスのドラッグを開始したらisDragのフラグをtrueにしてdraw関数内で
-  // お絵かき処理が途中で止まらないようにする
-  function dragStart(event) {
-    // これから新しい線を書き始めることを宣言する
-    // 一連の線を書く処理が終了したらdragEnd関数内のclosePathで終了を宣言する
-    context.beginPath();
-
-    isDrag = true;
-    emitter.publish('update', { data: "start,,"})    
-  }
-  // マウスのドラッグが終了したら、もしくはマウスがcanvas外に移動したら
-  // isDragのフラグをfalseにしてdraw関数内でお絵かき処理が中断されるようにする
-  function dragEnd(event) {
-    // 線を書く処理の終了を宣言する
-    context.closePath();
-    isDrag = false;
-
-    // 描画中に記録していた値をリセットする
-    lastPosition.x = null;
-    lastPosition.y = null;
-    emitter.publish('update', { data: "close,,"})    
-  }
-
-  // マウス操作やボタンクリック時のイベント処理を定義する
-  function initEventHandler() {
-    const clearButton = document.querySelector('#clear-button');
-    clearButton.addEventListener('click', clear);
-
-    canvas.addEventListener('mousedown', dragStart);
-    canvas.addEventListener('mouseup', dragEnd);
-    canvas.addEventListener('mouseout', dragEnd);
-    canvas.addEventListener('mousemove', (event) => {
-      // eventの中の値を見たい場合は以下のようにconsole.log(event)で、
-      // デベロッパーツールのコンソールに出力させると良い
-      // console.log(event);
-
-      draw(event.layerX, event.layerY);
+      initEventHandler();
     });
-  }
-
-  // イベント処理を初期化する
-  initEventHandler();
-});
 
   </script>
 </body>
+
 </html>
