@@ -32,17 +32,18 @@
       const DEFAULT_RELAY_URL = 'wss://nostr.developer.li'
       var topic = 'general'
 
-      const emitter = new NostrEmitter()
-      await emitter.connect(DEFAULT_RELAY_URL, topic)
+      const emitter = new NostrEmitter({kind: 1});
+      setSinceFiliter();
+      await emitter.connect(DEFAULT_RELAY_URL, topic);
 
-      emitter.opt.selfsub = true
+      emitter.opt.selfsub = true;
 
       emitter.on('update', (event, meta) => {
         console.log(event, meta)
         var splited = event.data.split(",")
         if (splited[0] == "stroke") {
           context.beginPath();
-          context.moveTo(Number(splited[1]), Number(splited[2]))
+          context.moveTo(Number(splited[1]), Number(splited[2]));
           context.lineTo(Number(splited[1]), Number(splited[2]));
           context.stroke();
           context.closePath();
@@ -50,6 +51,13 @@
           context.clearRect(0, 0, canvas.width, canvas.height);
         }
       })
+
+      function setSinceFiliter(){
+        // modify filter of emitter to get events of past 1 min
+        var date = new Date();
+        var curUnixTime = Math.floor(date.getTime() / 1000);
+        emitter.filter['since'] = curUnixTime - 60;
+      }
 
       function draw(x, y) {
         emitter.publish('update', { data: "stroke" + "," + x + "," + y })
@@ -66,7 +74,18 @@
         canvas.addEventListener('mousedown', (event) => { draw(event.offsetX, event.offsetY) });
       }
 
+      function keepConnect() {
+        if(!emitter.connected){
+          console.log("reconnection occured.")
+          emitter.subId = getRandomHex(16);          
+          emitter.subscribed = false;
+          setSinceFiliter();
+          emitter.connect(DEFAULT_RELAY_URL, topic);
+        }
+      }
+
       initEventHandler();
+      setInterval(keepConnect, 60*1000);
     });
 
   </script>
